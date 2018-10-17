@@ -295,6 +295,20 @@ void linux_attach_new_process (RDebug *dbg) {
 	r_debug_select (dbg, dbg->forked_pid, dbg->forked_pid);
 }
 
+typedef struct {
+	RDebug *dbg;
+	int pid;
+} linux_dbg_wait_break_user;
+
+static void linux_dbg_wait_break(void *user_arg) {
+	linux_dbg_wait_break_user *user = user_arg;
+	int pid = user->pid;
+	if (pid <= 0) {
+		pid = user->dbg->main_pid;
+	}
+	syscall (__NR_tkill, pid, SIGSTOP);
+}
+
 RDebugReasonType linux_dbg_wait(RDebug *dbg, int my_pid) {
 	RDebugReasonType reason = R_DEBUG_REASON_UNKNOWN;
 	int pid = (dbg->continue_all_threads && dbg->n_threads) ? -1 : dbg->main_pid;
@@ -303,11 +317,21 @@ RDebugReasonType linux_dbg_wait(RDebug *dbg, int my_pid) {
 	if (pid == -1) {
 		flags |= WNOHANG;
 	}
-repeat:
+
+	linux_dbg_wait_break_user break_user;
+	break_user.dbg = dbg;
+	break_user.pid = pid;
+
+	r_cons_break_push (linux_dbg_wait_break, &break_user);
 	for (;;) {
+		if (r_cons_is_breaked ()) {
+			break;
+		}
+
 		void *bed = r_cons_sleep_begin ();
 		int ret = waitpid (pid, &status, flags);
 		r_cons_sleep_end (bed);
+
 		if (ret < 0) {
 			perror ("waitpid");
 			break;
@@ -319,7 +343,7 @@ repeat:
 
 			if (reason == R_DEBUG_REASON_EXIT_TID) {
 				r_debug_ptrace (dbg, PTRACE_CONT, pid, NULL, 0);
-				goto repeat;
+				continue;
 			}
 
 			if (reason != R_DEBUG_REASON_UNKNOWN) {
@@ -345,7 +369,8 @@ repeat:
 				}
 				if (!linux_handle_signals (dbg)) {
 					eprintf ("can't handle signals\n");
-					return R_DEBUG_REASON_ERROR;
+					reason = R_DEBUG_REASON_ERROR;
+					break;
 				}
 				reason = dbg->reason.type;
 #ifdef WIFCONTINUED
@@ -371,6 +396,7 @@ repeat:
 			}
 		}
 	}
+	r_cons_break_pop ();
 	return reason;
 }
 
