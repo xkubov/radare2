@@ -109,6 +109,56 @@
 >6	byte&0x10	0				single-block stream
 >6	byte&0x10	0x10			multi-block stream
 
+## BIG ENDIAN
+0        string    \x5D\x00\x00
+>1        belong    >0       dictionary size: %d bytes,
+>>1        belong    <0xfffff       dictionary size: %d bytes,
+>>>5        bequad    >0        uncompressed size: %lld bytes
+>>>>5        bequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        belong    x        LZMA compressed data (5D) dictionary size: %d bytes,
+>>>>>5        bequad    x        uncompressed size: %lld bytes
+
+0        string    \x5C\x00\x00    LZMA compressed data, properties: 0x5C,
+>1        belong    >0       dictionary size: %d bytes,
+>>1        belong    <0xfffff       dictionary size: %d bytes,
+>>>5        bequad    >0        uncompressed size: %lld bytes
+>>>>5        bequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        belong    x        dictionary size: %d bytes,
+>>>>>5        bequad    x        uncompressed size: %lld bytes
+
+0        string    \x5B\x00\x00
+>1        belong    >0       dictionary size: %d bytes,
+>>1        belong    <0xfffff       dictionary size: %d bytes,
+>>>5        bequad    >0        uncompressed size: %lld bytes
+>>>>5        bequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        belong    x        LZMA compressed data (5B) dictionary size: %d bytes,
+>>>>>5        bequad    x        uncompressed size: %lld bytes
+
+## LITTLE ENDIAN
+0        string    \x5D\x00\x00
+>1        lelong    >0       dictionary size: %d bytes,
+>>1        lelong    <0xfffff       dictionary size: %d bytes,
+>>>5        lequad    >0        uncompressed size: %lld bytes
+>>>>5        lequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        lelong    x        LZMA compressed data (5D) dictionary size: %d bytes,
+>>>>>5        lequad    x        uncompressed size: %lld bytes
+
+0        string    \x5C\x00\x00    LZMA compressed data, properties: 0x5C,
+>1        lelong    >0       dictionary size: %d bytes,
+>>1        lelong    <0xfffff       dictionary size: %d bytes,
+>>>5        lequad    >0        uncompressed size: %lld bytes
+>>>>5        lequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        lelong    x        dictionary size: %d bytes,
+>>>>>5        lequad    x        uncompressed size: %lld bytes
+
+0        string    \x5B\x00\x00
+>1        lelong    >0       dictionary size: %d bytes,
+>>1        lelong    <0xfffff       dictionary size: %d bytes,
+>>>5        lequad    >0        uncompressed size: %lld bytes
+>>>>5        lequad    <0xffffffff        uncompressed size: %lld bytes
+>>>>>1        lelong    x        LZMA compressed data (5B) dictionary size: %d bytes,
+>>>>>5        lequad    x        uncompressed size: %lld bytes
+
 #0	string	\xff\x06\x00\x00\x73\x4e\x61\x50\x70\x59	Snappy compression, stream identifier
 
 #0   string	\x1f\x9d\x90	compress'd data, 16 bits
