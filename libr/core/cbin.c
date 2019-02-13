@@ -2871,6 +2871,14 @@ static int bin_classes(RCore *r, int mode) {
 				r_name_filter (method, -1);
 				r_flag_set (r->flags, method, sym->vaddr, 1);
 			}
+#if 1
+			r_list_foreach (c->fields, iter2, f) {
+				char *fn = r_str_newf ("field.%s.%s", classname, f->name);
+				ut64 at = f->vaddr; //  sym->vaddr + (f->vaddr &  0xffff);
+				r_flag_set (r->flags, fn, at, 1);
+				free (fn);
+			}
+#endif
 		} else if (IS_MODE_SIMPLE (mode)) {
 			r_cons_printf ("0x%08"PFMT64x" [0x%08"PFMT64x" - 0x%08"PFMT64x"] %s%s%s\n",
 				c->addr, at_min, at_max, c->name, c->super ? " " : "",

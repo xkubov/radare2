@@ -256,8 +256,10 @@ static void get_ivar_list_t(mach0_ut p, RBinFile *bf, RBinClass *klass) {
 			break;
 		}
 
-
+field->vaddr = i.offset;
 		ivar_offset_p = get_pointer (i.offset, NULL, &left, bf);
+field->vaddr = ivar_offset_p;
+eprintf ("0x%08llx %s\n", field->vaddr, "?");
 
 		if (ivar_offset_p > bf->size) {
 			goto error;
@@ -272,7 +274,7 @@ static void get_ivar_list_t(mach0_ut p, RBinFile *bf, RBinClass *klass) {
 				goto error;
 			}
 			ivar_offset = r_read_ble (offs, bigendian, 8 * sizeof (mach0_ut));
-			field->vaddr = ivar_offset;
+			// field->vaddr = ivar_offset;
 		}
 
 		r = get_pointer (i.name, NULL, &left, bf);
@@ -301,6 +303,7 @@ static void get_ivar_list_t(mach0_ut p, RBinFile *bf, RBinClass *klass) {
 			field->name = r_str_newf ("%s::%s%s", klass->name, "(ivar)", name);
 			R_FREE (name);
 		}
+eprintf ( "IVAR 0x%llx %s\n", (ut64)i.offset, field->name);
 
 		r = get_pointer (i.type, NULL, &left, bf);
 		if (r != 0) {
