@@ -981,6 +981,8 @@ static bool is_end_gadget(const RAnalOp *aop, const ut8 crop) {
 		switch (aop->type) {
 		case R_ANAL_OP_TYPE_CJMP:
 		case R_ANAL_OP_TYPE_UCJMP:
+		case R_ANAL_OP_TYPE_RCALL:
+		case R_ANAL_OP_TYPE_UCALL:
 		case R_ANAL_OP_TYPE_CCALL:
 		case R_ANAL_OP_TYPE_UCCALL:
 		case R_ANAL_OP_TYPE_CRET:   // i'm a condret
@@ -1039,9 +1041,11 @@ static RList *construct_rop_gadget(RCore *core, ut64 addr, ut8 *buf, int idx, co
 	}
 	int opsz = 0;
 	char *opst = NULL;
+int minopsz = 2;
 
 	while (nb_instr < max_instr) {
 		ht_uu_insert (localbadstart, idx, 1);
+		r_asm_set_bits (core->assembler, 16);
 		r_asm_set_pc (core->assembler, addr);
 		if (!r_asm_disassemble (core->assembler, &asmop, buf + idx, 15)) {
 			goto ret;
@@ -1056,6 +1060,10 @@ static RList *construct_rop_gadget(RCore *core, ut64 addr, ut8 *buf, int idx, co
 			goto ret;
 		}
 
+		if (opsz < 1) {
+			opsz = minopsz;
+			// TODO: adjust alignment
+		}
 		hit = r_core_asm_hit_new ();
 		hit->addr = addr;
 		hit->len = opsz;
@@ -1229,7 +1237,10 @@ static void print_rop(RCore *core, RList *hitlist, char mode, bool *json_first) 
 			buf[hit->len] = 0;
 			r_io_read_at (core->io, hit->addr, buf, hit->len);
 			r_asm_set_pc (core->assembler, hit->addr);
+			r_asm_set_bits (core->assembler, 16);
 			r_asm_disassemble (core->assembler, &asmop, buf, hit->len);
+			r_anal_set_bits (core->anal, 16);
+eprintf ("Pen\n");
 			r_anal_op (core->anal, &analop, hit->addr, buf, hit->len, R_ANAL_OP_MASK_ESIL);
 			size += hit->len;
 			if (analop.type != R_ANAL_OP_TYPE_RET) {
