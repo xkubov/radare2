@@ -68,7 +68,8 @@ static ut64 get_method_flags(ut64 MA) {
 	return flags;
 }
 
-static ut64 offset_of_method_idx(RBinFile *bf, struct r_bin_dex_obj_t *dex, int idx) {
+static ut64 offset_of_method_idx(RBinFile *bf, int idx) {
+	// RBinDexObj *dex = bf->o->bin_obj;
 	// ut64 off = dex->header.method_offset + idx;
 	return sdb_num_get (mdb, sdb_fmt ("method.%d", idx), 0);
 }
@@ -234,14 +235,14 @@ static char *createAccessFlagStr(ut32 flags, AccessFor forWhat) {
 	return str;
 }
 
-static char *dex_type_descriptor(RBinDexObj *bin, int type_idx) {
-	if (type_idx < 0 || type_idx >= bin->header.types_size) {
+static const char *dex_type_descriptor(RBinDexObj *dex, int type_idx) {
+	if (type_idx < 0 || type_idx >= dex->header.types_size) {
 		return NULL;
 	}
-	return getstr (bin, bin->types[type_idx].descriptor_id);
+	return getstr (dex, dex->types[type_idx].descriptor_id);
 }
 
-static char *dex_get_proto(RBinDexObj *bin, int proto_id) {
+static const char *dex_get_proto(RBinDexObj *bin, int proto_id) {
 	ut32 params_off, type_id, list_size;
 	char *r = NULL, *return_type = NULL, *signature = NULL, *buff = NULL;
 	ut16 type_idx;
@@ -1618,10 +1619,10 @@ static void parse_class(RBinFile *bf, RBinDexClass *c, int class_index, int *met
 	//free (class_name);
 }
 
-static bool is_class_idx_in_code_classes(RBinDexObj *bin, int class_idx) {
+static bool is_class_idx_in_code_classes(RBinDexObj *dex, int class_idx) {
 	int i;
-	for (i = 0; i < bin->header.class_size; i++) {
-		if (class_idx == bin->classes[i].class_id) {
+	for (i = 0; i < dex->header.class_size; i++) {
+		if (class_idx == dex->classes[i].class_id) {
 			return true;
 		}
 	}
@@ -1630,89 +1631,89 @@ static bool is_class_idx_in_code_classes(RBinDexObj *bin, int class_idx) {
 
 // XXX remove this second argument, must be implicit by the rbinfile
 static bool dex_loadcode(RBinFile *bf) {
-	RBin *rbin = bf->rbin;
-	RBinDexObj *bin = bf->o->bin_obj;
+	PrintfCallback cb_printf = bf->rbin->cb_printf;
+	RBinDexObj *dex = bf->o->bin_obj;
 	int i;
 	int *methods = NULL;
 	int sym_count = 0;
 
-	r_return_val_if_fail (bf && bin, false);
+	r_return_val_if_fail (bf && dex, false);
 
 	// doublecheck??
-	if (bin->methods_list) {
+	if (dex->methods_list) {
 		return false;
 	}
-	bin->version = r_bin_dex_get_version (bin);
-	bin->code_from = UT64_MAX;
-	bin->code_to = 0;
-	bin->methods_list = r_list_newf ((RListFree)free);
-	if (!bin->methods_list) {
+	dex->version = r_bin_dex_get_version (dex);
+	dex->code_from = UT64_MAX;
+	dex->code_to = 0;
+	dex->methods_list = r_list_newf ((RListFree)free);
+	if (!dex->methods_list) {
 		return false;
 	}
-	bin->imports_list = r_list_newf ((RListFree)free);
-	if (!bin->imports_list) {
-		r_list_free (bin->methods_list);
+	dex->imports_list = r_list_newf ((RListFree)free);
+	if (!dex->imports_list) {
+		r_list_free (dex->methods_list);
 		return false;
 	}
-	bin->lines_list = r_list_newf ((RListFree)free);
-	if (!bin->lines_list) {
+	dex->lines_list = r_list_newf ((RListFree)free);
+	if (!dex->lines_list) {
 		return false;
 	}
-	bin->classes_list = r_list_newf ((RListFree)r_bin_class_free);
-	if (!bin->classes_list) {
-		r_list_free (bin->methods_list);
-		r_list_free (bin->lines_list);
-		r_list_free (bin->imports_list);
+	dex->classes_list = r_list_newf ((RListFree)r_bin_class_free);
+	if (!dex->classes_list) {
+		r_list_free (dex->methods_list);
+		r_list_free (dex->lines_list);
+		r_list_free (dex->imports_list);
 		return false;
 	}
 
-	if (bin->header.method_size>bin->size) {
-		bin->header.method_size = 0;
+	if (dex->header.method_size>dex->size) {
+		dex->header.method_size = 0;
 		return false;
 	}
 
 	/* WrapDown the header sizes to avoid huge allocations */
-	bin->header.method_size = R_MIN (bin->header.method_size, bin->size);
-	bin->header.class_size = R_MIN (bin->header.class_size, bin->size);
-	bin->header.strings_size = R_MIN (bin->header.strings_size, bin->size);
+	dex->header.method_size = R_MIN (dex->header.method_size, dex->size);
+	dex->header.class_size = R_MIN (dex->header.class_size, dex->size);
+	dex->header.strings_size = R_MIN (dex->header.strings_size, dex->size);
 
 	// TODO: is this posible after R_MIN ??
-	if (bin->header.strings_size > bin->size) {
+	if (dex->header.strings_size > dex->size) {
 		eprintf ("Invalid strings size\n");
 		return false;
 	}
 	dexSubsystem = NULL;
 
-	if (bin->classes) {
-		ut64 amount = sizeof (int) * bin->header.method_size;
-		if (amount > UT32_MAX || amount < bin->header.method_size) {
+	if (dex->classes) {
+		ut64 amount = sizeof (int) * dex->header.method_size;
+		if (amount > UT32_MAX || amount < dex->header.method_size) {
 			return false;
 		}
 		methods = calloc (1, amount + 1);
-		for (i = 0; i < bin->header.class_size; i++) {
-			struct dex_class_t *c = &bin->classes[i];
+		for (i = 0; i < dex->header.class_size; i++) {
+			struct dex_class_t *c = &dex->classes[i];
 			if (dexdump) {
-				rbin->cb_printf ("Class #%d            -\n", i);
+				cb_printf ("Class #%d            -\n", i);
 			}
 			parse_class (bf, c, i, methods, &sym_count);
 		}
 	}
 	if (methods) {
 		int import_count = 0;
-		int sym_count = bin->methods_list->length;
+		int sym_count = dex->methods_list->length;
 
-		for (i = 0; i < bin->header.method_size; i++) {
+		for (i = 0; i < dex->header.method_size; i++) {
 			int len = 0;
 			if (methods[i]) {
 				continue;
 			}
-			if (bin->methods[i].class_id >= bin->header.types_size) {
+			if (dex->methods[i].class_id >= dex->header.types_size) {
 				continue;
 			}
-			if (is_class_idx_in_code_classes (bin, bin->methods[i].class_id)) {
+			if (is_class_idx_in_code_classes (dex, dex->methods[i].class_id)) {
 				continue;
 			}
-			const char *className = getstr (bin, bin->types[bin->methods[i].class_id].descriptor_id);
+			const char *className = getstr (dex, dex->types[dex->methods[i].class_id].descriptor_id);
 			if (!className) {
 				continue;
 			}
@@ -1734,8 +1735,8 @@ static bool dex_loadcode(RBinFile *bf) {
 				continue;
 			}
 			r_str_replace_char (class_name, ';', 0);
-			char *method_name = dex_method_name (bin, i);
-			char *signature = dex_method_signature (bin, i);
+			char *method_name = dex_method_name (dex, i);
+			char *signature = dex_method_signature (dex, i);
 			if (method_name && *method_name) {
 				RBinImport *imp = R_NEW0 (RBinImport);
 				if (!imp) {
@@ -1748,7 +1749,7 @@ static bool dex_loadcode(RBinFile *bf) {
 				imp->type = r_str_const ("FUNC");
 				imp->bind = r_str_const ("NONE");
 				imp->ordinal = import_count++;
-				r_list_append (bin->imports_list, imp);
+				r_list_append (dex->imports_list, imp);
 
 				RBinSymbol *sym = R_NEW0 (RBinSymbol);
 				if (!sym) {
@@ -1762,9 +1763,9 @@ static bool dex_loadcode(RBinFile *bf) {
 				sym->bind = r_str_const ("NONE");
 				//XXX so damn unsafe check buffer boundaries!!!!
 				//XXX use r_buf API!!
-				sym->paddr = sym->vaddr = bin->header.method_offset + (sizeof (struct dex_method_t) * i) ;
+				sym->paddr = sym->vaddr = dex->header.method_offset + (sizeof (struct dex_method_t) * i) ;
 				sym->ordinal = sym_count++;
-				r_list_append (bin->methods_list, sym);
+				r_list_append (dex->methods_list, sym);
 				sdb_num_set (mdb, sdb_fmt ("method.%d", i), sym->paddr, 0);
 			}
 			free (signature);
@@ -1776,15 +1777,14 @@ static bool dex_loadcode(RBinFile *bf) {
 }
 
 static RList* imports(RBinFile *bf) {
-	RBinDexObj *bin = (RBinDexObj*) bf->o->bin_obj;
-	if (!bin) {
-		return NULL;
+	RBinDexObj *dex = (RBinDexObj*) bf->o->bin_obj;
+	if (dex) {
+		if (!dex->imports_list) {
+			dex_loadcode (bf);
+		}
+		return dex->imports_list;
 	}
-	if (bin && bin->imports_list) {
-		return bin->imports_list;
-	}
-	dex_loadcode (bf);
-	return bin->imports_list;
+	return NULL;
 }
 
 static RList *trycatch(RBinFile *bf) {
@@ -1890,7 +1890,7 @@ static int getoffset(RBinFile *bf, int type, int idx) {
 	switch (type) {
 	case 'm': // methods
 		// TODO: ADD CHECK
-		return offset_of_method_idx (bf, dex, idx);
+		return offset_of_method_idx (bf, idx);
 	case 'f':
 		return dex_field_offset (dex, idx);
 	case 'o': // objects
@@ -1912,7 +1912,7 @@ static int getoffset(RBinFile *bf, int type, int idx) {
 }
 
 static char *getname(RBinFile *bf, int type, int idx) {
-	struct r_bin_dex_obj_t *dex = bf->o->bin_obj;
+	RBinDexObj *dex = bf->o->bin_obj;
 	switch (type) {
 	case 'm': // methods
 		return dex_method_fullname (dex, idx);
@@ -2002,7 +2002,7 @@ static RList *sections(RBinFile *bf) {
 			// hacky workaround
 			//ptr->size = ptr->vsize = 1024;
 		}
-		ptr->perm = R_PERM_R; //|2;
+		ptr->perm = R_PERM_R;
 		ptr->add = true;
 		r_list_append (ret, ptr);
 	}
