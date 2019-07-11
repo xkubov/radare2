@@ -68,6 +68,7 @@ static const char *dex_type_descriptor(RBinDexObj *dex, int type_idx) {
 }
 
 static ut64 parseNumber(RBinDexObj *dex) {
+	return 0LL;
 }
 
 static void parseValue(RBinDexObj *dex) {
@@ -77,7 +78,7 @@ static void parseValue(RBinDexObj *dex) {
 	int size = arg + 1;
 
 	eprintf ("  value size = %d\n", size);
-	char *typeName = className (dex, type);
+	const char *typeName = className (dex, type);
 	if (typeName) {
 		eprintf ("      value value = %d (%s)\n", type, typeName);
 	} else {
@@ -111,7 +112,7 @@ static void parseValue(RBinDexObj *dex) {
 		{
 			ut64 addr;
 			r_buf_uleb128 (dex->b, &addr);
-			eprintf ("STRINV ADDR %x\n", addr);
+			eprintf ("STRINV ADDR 0x%"PFMT64x"\n", addr);
 		}
 		eprintf ("STRING\n");
 		break;
@@ -168,7 +169,7 @@ static void readAnnotation(RBinDexObj *dex, bool readVisibility) {
 	}
 	ut64 typeIndex = UT64_MAX;
 	ut64 typeSize = UT64_MAX;
-	int a = r_buf_uleb128 (buf, &typeIndex);
+	r_buf_uleb128 (buf, &typeIndex);
 	(void)r_buf_uleb128 (buf, &typeSize);
 	if (typeIndex < 0 || typeSize < 0) {
 		return;
@@ -176,7 +177,7 @@ static void readAnnotation(RBinDexObj *dex, bool readVisibility) {
 	if (typeIndex > 10000 || typeSize > 1000) {
 		return;
 	}
-	char *typeString = className (dex, typeIndex);
+	const char *typeString = className (dex, typeIndex);
 	eprintf ("      TypeSize: %d %d (%s)\n", (int)typeIndex, (int)typeSize, typeString);
 	for (i = 0; i < typeSize; i++) {
 		r_buf_uleb128 (buf, &stringIndex);
@@ -430,7 +431,6 @@ RBinDexObj *r_bin_dex_new_buf(RBuffer *buf) {
 		eprintf ("            annotatedMethodCount  %d\n", annotatedMethodsCount);
 		eprintf ("            annotatedParametersCount  %d\n", annotatedParametersCount);
 
-		ut64 addr = at + (4 * sizeof (ut32));
 		if (classAnnotationsOffset > 0) {
 			ut64 cur = r_buf_seek (dex->b, 0, R_BUF_CUR);
 			readAnnotationSet (dex, classAnnotationsOffset);
