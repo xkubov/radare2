@@ -924,7 +924,7 @@ static RList *strings(RBinFile *bf) {
 			ptr->vaddr = ptr->paddr = bin->strings[i];
 			ptr->size = len;
 			ptr->length = len;
-			ptr->ordinal = i+1;
+			ptr->ordinal = i + 1;
 			r_list_append (ret, ptr);
 		} else {
 			free (ptr);
