@@ -141,6 +141,7 @@ R_API bool r_anal_bb_is_in_offset(RAnalBlock *bb, ut64 off) {
 }
 
 R_API RAnalBlock *r_anal_bb_from_offset(RAnal *anal, ut64 off) {
+#if 0
 	RListIter *iter, *iter2;
 	RAnalFunction *fcn;
 	RAnalBlock *bb;
@@ -168,6 +169,8 @@ R_API RAnalBlock *r_anal_bb_from_offset(RAnal *anal, ut64 off) {
 		}
 	}
 	return NULL;
+#endif
+	return r_anal_get_block_in (anal, off);
 }
 
 R_API RAnalBlock *r_anal_bb_get_jumpbb(RAnalFunction *fcn, RAnalBlock *bb) {
@@ -177,35 +180,17 @@ R_API RAnalBlock *r_anal_bb_get_jumpbb(RAnalFunction *fcn, RAnalBlock *bb) {
 	if (bb->jumpbb) {
 		return bb->jumpbb;
 	}
-	RListIter *iter;
-	RAnalBlock *b;
-	r_list_foreach (fcn->bbs, iter, b) {
-		if (b->addr == bb->jump) {
-			bb->jumpbb = b;
-			b->prev = bb;
-			return b;
-		}
-	}
-	return NULL;
+	return r_anal_get_block_at (fcn->anal, bb->jump);
 }
 
 R_API RAnalBlock *r_anal_bb_get_failbb(RAnalFunction *fcn, RAnalBlock *bb) {
-	RListIter *iter;
-	RAnalBlock *b;
 	if (bb->fail == UT64_MAX) {
 		return NULL;
 	}
 	if (bb->failbb) {
 		return bb->failbb;
 	}
-	r_list_foreach (fcn->bbs, iter, b) {
-		if (b->addr == bb->fail) {
-			bb->failbb = b;
-			b->prev = bb;
-			return b;
-		}
-	}
-	return NULL;
+	return r_anal_get_block_at (fcn->anal, bb->fail);
 }
 
 /* return the offset of the i-th instruction in the basicblock bb.
@@ -288,15 +273,6 @@ R_API bool r_anal_bb_op_starts_at(RAnalBlock *bb, ut64 addr) {
 /* returns the address of the basic block that contains addr or UT64_MAX if
  * there is no such basic block */
 R_API ut64 r_anal_get_bbaddr(RAnal *anal, ut64 addr) {
-	RAnalBlock *bb;
-	RListIter *iter;
-	RAnalFunction *fcni = r_anal_get_fcn_in_bounds (anal, addr, 0);
-	if (fcni) {
-		r_list_foreach (fcni->bbs, iter, bb) {
-			if (addr >= bb->addr && addr < bb->addr + bb->size) {
-				return bb->addr;
-			}
-		}
-	}
-	return UT64_MAX;
+	RAnalBlock *bb = r_anal_get_block_in (anal, addr);
+	return bb ? bb->addr : UT64_MAX;
 }

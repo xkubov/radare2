@@ -3,6 +3,8 @@
 #include <r_anal.h>
 #include <r_util/pj.h>
 
+#include <assert.h>
+
 #define NEWBBAPI 1
 
 #if NEWBBAPI
@@ -125,15 +127,18 @@ D eprintf ("del block (%d) %llx\n", bb->ref, bb->addr);
 
 R_API void r_anal_block_unref(RAnalBlock *bb) {
 	RAnal *anal = bb->anal;
+	assert (bb->ref > 0);
 	bb->ref--;
+#if 0
 	RListIter *iter, *iter2;
-	RAnalFunction *fcn;
+	//RAnalFunction *fcn;
 	D eprintf("unref bb %d\n", bb->ref);
 	r_list_foreach_safe (bb->fcns, iter, iter2, fcn) {
 		D eprintf("miss unref\n");
 		r_list_delete (bb->fcns, iter);
 		//r_anal_function_unref (fcn);
 	}
+#endif
 	D eprintf("unref2 bb %d\n", bb->ref);
 	if (bb->ref < 1) {
 		r_anal_del_block (bb->anal, bb);

@@ -103,33 +103,21 @@ static int cmpaddr(const void *_a, const void *_b) {
 	return (a->addr - b->addr);
 }
 
-R_API void r_anal_fcn_update_tinyrange_bbs(RAnalFunction *fcn) {
-	RAnalBlock *bb;
-	RListIter *iter;
-	r_list_sort (fcn->bbs, &cmpaddr);
-	r_tinyrange_fini (&fcn->bbr);
-	r_list_foreach (fcn->bbs, iter, bb) {
-		r_tinyrange_add (&fcn->bbr, bb->addr, bb->addr + bb->size);
+static bool set_meta_block_cb(RAnalBlock *block, void *user) {
+	RAnalFunction *fcn = user;
+	if (fcn->meta.min > block->addr) {
+		fcn->meta.min = block->addr;
 	}
+	if (fcn->meta.max < block->addr + block->size) {
+		fcn->meta.max = block->addr + block->size;
+	}
+	return true;
 }
 
 static void set_meta_if_needed(RAnalFunction *x) {
 	if (x->meta.min == UT64_MAX) {
-		ut64 min = UT64_MAX;
-		ut64 max = UT64_MIN;
-		RListIter *bbs_iter;
-		RAnalBlock *bbi;
-		r_list_foreach (x->bbs, bbs_iter, bbi) {
-			if (min > bbi->addr) {
-				min = bbi->addr;
-			}
-			if (max < bbi->addr + bbi->size) {
-				max = bbi->addr + bbi->size;
-			}
-		}
-		x->meta.min = min;
-		x->meta.max = max;
-		x->_size = max - min; // HACK TODO Fix af size calculation
+		r_anal_function_blocks_foreach (x, set_meta_block_cb, x);
+		x->_size = x->meta.max - x->meta.min; // HACK TODO Fix af size calculation
 	}
 }
 
@@ -337,6 +325,8 @@ static void _fcn_tree_iter_next(FcnTreeIter *it, ut64 from, ut64 to) {
 	}
 }
 
+#if 0
+// This makes no sense after anal-block
 R_API int r_anal_fcn_resize(RAnal *anal, RAnalFunction *fcn, int newsize) {
 	RAnalBlock *bb;
 	RListIter *iter, *iter2;
@@ -374,6 +364,7 @@ R_API int r_anal_fcn_resize(RAnal *anal, RAnalFunction *fcn, int newsize) {
 	r_anal_fcn_update_tinyrange_bbs (fcn);
 	return true;
 }
+#endif
 
 // TODO: see function.c and name, addr args maybe? so much dupe
 R_API RAnalFunction *r_anal_fcn_new(RAnal *anal) {
@@ -390,7 +381,6 @@ R_API RAnalFunction *r_anal_fcn_new(RAnal *anal) {
 	fcn->ref = 1;
 	fcn->cc = r_str_constpool_get (&anal->constpool, r_anal_cc_default (anal));
 	fcn->bits = anal->bits;
-	fcn->bbs = r_list_newf ((RListFree)r_anal_block_unref);
 	fcn->diff = r_anal_diff_new ();
 	fcn->has_changed = true;
 	fcn->bp_frame = true;
@@ -414,8 +404,6 @@ R_API void r_anal_fcn_free(void *_fcn) {
 	free (fcn->attr);
 	r_tinyrange_fini (&fcn->bbr);
 	r_list_free (fcn->fcn_locs);
-	r_list_free (fcn->bbs);
-	fcn->bbs = NULL;
 	free (fcn->fingerprint);
 	r_anal_diff_free (fcn->diff);
 	free (fcn->args);
@@ -425,16 +413,19 @@ R_API void r_anal_fcn_free(void *_fcn) {
 static RAnalBlock *bbget(RAnalFunction *fcn, ut64 addr, bool jumpmid) {
 	if (jumpmid) {
 		// this code must be deprecated because its O(n)
+		RList *list = r_anal_function_blocks_list (fcn);
 		RListIter *iter;
 		RAnalBlock *bb;
-		r_list_foreach (fcn->bbs, iter, bb) {
+		r_list_foreach (list, iter, bb) {
 			ut64 eaddr = bb->addr + bb->size;
 			if (((bb->addr >= eaddr && addr == bb->addr)
 						|| r_anal_bb_is_in_offset (bb, addr))
 					&& (!jumpmid || r_anal_bb_op_starts_at (bb, addr))) {
+				r_list_free (list);
 				return bb;
 			}
 		}
+		r_list_free (list);
 		return NULL;
 	}
 	// blocks are universal!

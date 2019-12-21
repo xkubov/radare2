@@ -85,32 +85,108 @@ R_API int r_anal_diff_fingerprint_bb(RAnal *anal, RAnalBlock *bb) {
 	return bb->size;
 }
 
-R_API int r_anal_diff_fingerprint_fcn(RAnal *anal, RAnalFunction *fcn) {
-	RAnalBlock *bb;
-	RListIter *iter;
-	int len = 0;
+typedef struct {
+	RAnalFunction *fcn;
+	size_t len;
+} FcnFingerprintCtx;
 
+static bool fingerprint_fcn_cb(RAnalBlock *block, void *user) {
+	FcnFingerprintCtx *ctx = user;
+
+	ctx->len += block->size;
+	ut8 *new_fp = realloc (ctx->fcn->fingerprint, ctx->len + 1);
+	if (!new_fp) {
+		return false;
+	}
+	ctx->fcn->fingerprint = new_fp;
+	memcpy (ctx->fcn->fingerprint + ctx->len - block->size, block->fingerprint, block->size);
+	return true;
+}
+
+R_API size_t r_anal_diff_fingerprint_fcn(RAnal *anal, RAnalFunction *fcn) {
 	if (anal && anal->cur && anal->cur->fingerprint_fcn) {
 		return (anal->cur->fingerprint_fcn (anal, fcn));
 	}
 
+	FcnFingerprintCtx ctx = { fcn, 0 };
 	fcn->fingerprint = NULL;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		len += bb->size;
-		fcn->fingerprint = realloc (fcn->fingerprint, len + 1);
-		if (!fcn->fingerprint) {
-			return 0;
-		}
-		memcpy (fcn->fingerprint+len-bb->size, bb->fingerprint, bb->size);
+	r_anal_function_blocks_foreach (fcn, fingerprint_fcn_cb, &ctx);
+	return ctx.len;
+}
+
+typedef struct {
+	RAnalFunction *fcn;
+	RAnalFunction *fcn2;
+} DiffBBCtx;
+
+typedef struct {
+	DiffBBCtx *ctx;
+	RAnalBlock *bb;
+	RAnalBlock *mbb, *mbb2;
+	double t;
+	double ot;
+} DiffBB2Ctx;
+
+// inner loop over fcn2 blocks
+static bool diff_bb2_cb(RAnalBlock *bb2, void *user) {
+	DiffBB2Ctx *ctx = user;
+	if (bb2->diff && bb2->diff->type == R_ANAL_DIFF_TYPE_NULL) {
+		return true;
 	}
-	return len;
+	r_diff_buffers_distance (NULL, ctx->bb->fingerprint, ctx->bb->size, bb2->fingerprint, bb2->size, NULL, &ctx->t);
+	if (ctx->t > ctx->bb->anal->diff_thbb && ctx->t > ctx->ot) {
+		ctx->ot = ctx->t;
+		ctx->mbb = ctx->bb;
+		ctx->mbb2 = bb2;
+		if (ctx->t == 1) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// outer loop over fcn blocks
+static bool diff_bb_cb(RAnalBlock *bb, void *user) {
+	DiffBBCtx *ctx = user;
+	if (bb->diff && bb->diff->type != R_ANAL_DIFF_TYPE_NULL) {
+		return true;
+	}
+
+	DiffBB2Ctx bb2_ctx = { ctx, bb, NULL, NULL, 0.0, 0.0 };
+	r_anal_function_blocks_foreach (ctx->fcn2, diff_bb2_cb, &bb2_ctx);
+	if (bb2_ctx.mbb && bb2_ctx.mbb2) {
+		if (!bb2_ctx.mbb->diff) {
+			bb2_ctx.mbb->diff = r_anal_diff_new();
+		}
+		if (!bb2_ctx.mbb2->diff) {
+			bb2_ctx.mbb2->diff = r_anal_diff_new();
+		}
+		if (!bb2_ctx.mbb->diff || !bb2_ctx.mbb2->diff) {
+			return false;
+		}
+		if (bb2_ctx.ot == 1 || bb2_ctx.t > ctx->fcn->anal->diff_thfcn) {
+			bb2_ctx.mbb->diff->type = bb2_ctx.mbb2->diff->type = R_ANAL_DIFF_TYPE_MATCH;
+		} else {
+			bb2_ctx.mbb->diff->type = bb2_ctx.mbb2->diff->type = \
+			ctx->fcn->diff->type = ctx->fcn2->diff->type = \
+				R_ANAL_DIFF_TYPE_UNMATCH;
+		}
+		R_FREE (bb2_ctx.mbb->fingerprint);
+		R_FREE (bb2_ctx.mbb2->fingerprint);
+		bb2_ctx.mbb->diff->addr = bb2_ctx.mbb2->addr;
+		bb2_ctx.mbb2->diff->addr = bb2_ctx.mbb->addr;
+		bb2_ctx.mbb->diff->size = bb2_ctx.mbb2->size;
+		bb2_ctx.mbb2->diff->size = bb2_ctx.mbb->size;
+	} else {
+		ctx->fcn->diff->type = ctx->fcn2->diff->type = (ctx->fcn->diff->dist >= 0.6)
+			? R_ANAL_DIFF_TYPE_MATCH
+			: R_ANAL_DIFF_TYPE_UNMATCH;
+	}
+	return true;
 }
 
 R_API bool r_anal_diff_bb(RAnal *anal, RAnalFunction *fcn, RAnalFunction *fcn2) {
-	RAnalBlock *bb, *bb2, *mbb, *mbb2;
-	RListIter *iter, *iter2;
-	double t, ot;
-
+	DiffBBCtx ctx = { fcn, fcn2 };
 	if (!anal || !fcn || !fcn2) {
 		return false;
 	}
@@ -118,56 +194,7 @@ R_API bool r_anal_diff_bb(RAnal *anal, RAnalFunction *fcn, RAnalFunction *fcn2) 
 		return (anal->cur->diff_bb (anal, fcn, fcn2));
 	}
 	fcn->diff->type = fcn2->diff->type = R_ANAL_DIFF_TYPE_MATCH;
-	r_list_foreach (fcn->bbs, iter, bb) {
-		if (bb->diff && bb->diff->type != R_ANAL_DIFF_TYPE_NULL) {
-			continue;
-		}
-		ot = 0;
-		mbb = mbb2 = NULL;
-		r_list_foreach (fcn2->bbs, iter2, bb2) {
-			if (!bb2->diff || bb2->diff->type == R_ANAL_DIFF_TYPE_NULL) {
-				r_diff_buffers_distance (NULL, bb->fingerprint, bb->size,
-						bb2->fingerprint, bb2->size, NULL, &t);
-				if (t > anal->diff_thbb && t > ot) {
-					ot = t;
-					mbb = bb;
-					mbb2 = bb2;
-					if (t == 1) {
-						break;
-					}
-				}
-			}
-		}
-		if (mbb && mbb2) {
-			if (!mbb->diff) {
-				mbb->diff = r_anal_diff_new();
-			}
-			if (!mbb2->diff) {
-				mbb2->diff = r_anal_diff_new();
-			}
-			if (!mbb->diff || !mbb2->diff) {
-				return false;
-			}
-			if (ot == 1 || t > anal->diff_thfcn) {
-				mbb->diff->type = mbb2->diff->type = R_ANAL_DIFF_TYPE_MATCH;
-			} else {
-				mbb->diff->type = mbb2->diff->type = \
-				fcn->diff->type = fcn2->diff->type = \
-					R_ANAL_DIFF_TYPE_UNMATCH;
-			}
-			R_FREE (mbb->fingerprint);
-			R_FREE (mbb2->fingerprint);
-			mbb->diff->addr = mbb2->addr;
-			mbb2->diff->addr = mbb->addr;
-			mbb->diff->size = mbb2->size;
-			mbb2->diff->size = mbb->size;
-		} else {
-			fcn->diff->type = fcn2->diff->type = (fcn->diff->dist >= 0.6)
-				? R_ANAL_DIFF_TYPE_MATCH
-				: R_ANAL_DIFF_TYPE_UNMATCH;
-		}
-	}
-	return true;
+	return r_anal_function_blocks_foreach (fcn, diff_bb_cb, &ctx);
 }
 
 R_API int r_anal_diff_fcn(RAnal *anal, RList *fcns, RList *fcns2) {

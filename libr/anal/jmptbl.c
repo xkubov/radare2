@@ -251,12 +251,6 @@ static bool predecessor_bb_cb(RAnalBlock *block, void *user) {
 R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnalBlock *my_bb, ut64 *table_size, ut64 *default_case) {
 	bool isValid = false;
 	int i;
-	RListIter *iter;
-	RAnalBlock *tmp_bb, *prev_bb;
-	prev_bb = 0;
-	if (!fcn->bbs) {
-		return false;
-	}
 
 	/* if UJMP is in .plt section just skip it */
 	RBinSection *s = anal->binb.get_vsect_at (anal->binb.bin, addr);
@@ -272,14 +266,10 @@ R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnal
 	}
 
 	// search for the predecessor bb
-	r_list_foreach (fcn->bbs, iter, tmp_bb) {
-		if (tmp_bb->jump == my_bb->addr || tmp_bb->fail == my_bb->addr) {
-			prev_bb = tmp_bb;
-			break;
-		}
-	}
+	RAnalBlock *prev_bb = my_bb; // This is used as both input and output of predecessor_bb_cb
+	bool prev_found = !r_anal_function_blocks_foreach (fcn, predecessor_bb_cb, &prev_bb);
 	// predecessor must be a conditional jump
-	if (!prev_bb || !prev_bb->jump || !prev_bb->fail) {
+	if (!prev_found || !prev_bb || !prev_bb->jump || !prev_bb->fail) {
 		if (anal->verbose) {
 			eprintf ("Warning: [anal.jmp.tbl] Missing predecesessor cjmp bb at 0x%08"PFMT64x"\n", addr);
 		}
