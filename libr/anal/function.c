@@ -99,7 +99,6 @@ R_API bool r_anal_function_add_block_ll(RAnalFunction *fcn, RAnalBlock *bb) {
 	r_anal_function_ref (fcn);
 	r_list_append (bb->fcns, fcn); // associate the given fcn with this bb
 	r_anal_block_ref (bb);
-	r_list_append (fcn->bbs, bb); // TODO: avoid double insert the same bb
 	if (anal->cb.on_fcn_bb_new) {
 		anal->cb.on_fcn_bb_new (anal, anal->user, fcn, bb);
 	}
@@ -109,7 +108,6 @@ R_API bool r_anal_function_add_block_ll(RAnalFunction *fcn, RAnalBlock *bb) {
 
 R_API void r_anal_function_del_block(RAnalFunction *fcn, RAnalBlock *bb) {
 	r_list_delete_data (bb->fcns, fcn);
-	r_list_delete_data (fcn->bbs, bb);
 	(void)r_anal_del_block (fcn->anal, bb); // TODO: honor unref
 }
 
@@ -117,11 +115,15 @@ R_API void r_anal_function_unref(RAnalFunction *fcn) {
 	RAnal *anal = fcn->anal;
 	D eprintf ("unref fun %d 0x%llx\n", fcn->ref, fcn->addr);
 	fcn->ref--;
-	D eprintf ("unref2 eliminating %d bbs\n", r_list_length (fcn->bbs));
 	D eprintf ("unref2 fun %d\n", fcn->ref);
 	if (fcn->ref < 1) {
 		r_anal_del_function (fcn);
 	}
+}
+
+static bool bb_unref_cb(RAnalBlock *block, void *user) {
+	r_anal_block_unref (block);
+	return true;
 }
 
 R_API bool r_anal_del_function(RAnalFunction *fcn) {
@@ -134,8 +136,7 @@ R_API bool r_anal_del_function(RAnalFunction *fcn) {
 	if (!r_anal_fcn_tree_delete (anal, fcn)) {
 		return false;
 	}
-	r_list_free (fcn->bbs);
-	fcn->bbs = NULL;
+	r_anal_function_blocks_foreach (fcn, bb_unref_cb, NULL);
 #if 0
 	RListIter *iter, *iter2;
 	RAnalBlock *bb;
@@ -149,8 +150,7 @@ R_API bool r_anal_del_function(RAnalFunction *fcn) {
 	r_list_delete_data (anal->fcns, fcn);
 	//ht_up_delete (anal->ht_bbs, fcn->addr);
 	D eprintf ("delete data\n");
-	r_anal_fcn_free (fcn);
-	r_list_free (fcn->bbs);
+	r_anal_fcn_free (fcn);;
 	r_anal_fcn_tree_delete (anal, fcn);
 	return true;
 }

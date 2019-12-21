@@ -296,7 +296,6 @@ typedef struct r_anal_function_t {
 	RList *locs; // list of local variables
 	RList *fcn_locs; //sorted list of a function *.loc refs
 	//RList *locals; // list of local labels -> moved to anal->sdb_fcns
-	RList *bbs; // TODO: should be RPVector
 	RAnalFcnMeta meta;
 	RRangeTiny bbr;
 	RBNode rb;
@@ -1451,6 +1450,7 @@ typedef bool (*RAnalAddrCb)(ut64 addr, void *user);
 R_API bool r_anal_block_successor_addrs_foreach(RAnalBlock *block, RAnalAddrCb cb, void *user);
 
 // Call cb on block and every (recursive) successor of it
+// It is safe to call r_anal_block_ref() inside the callback.
 // returns false iff the loop was breaked by cb
 R_API bool r_anal_block_recurse(RAnalBlock *block, RAnalBlockCb cb, void *user);
 

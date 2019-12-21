@@ -186,6 +186,7 @@ static bool block_recurse_successor_cb(ut64 addr, void *user) {
 	if (!block) {
 		return true;
 	}
+	r_anal_block_ref (block);
 	r_pvector_push (&ctx->to_visit, block);
 	return true;
 }
@@ -207,9 +208,11 @@ R_API bool r_anal_block_recurse(RAnalBlock *block, RAnalBlockCb cb, void *user) 
 		RAnalBlock *cur = r_pvector_pop (&ctx.to_visit);
 		breaked = !cb (cur, user);
 		if (breaked) {
+			r_anal_block_unref (block);
 			break;
 		}
 		r_anal_block_successor_addrs_foreach (cur, block_recurse_successor_cb, &ctx);
+		r_anal_block_ref (block);
 	}
 
 beach:

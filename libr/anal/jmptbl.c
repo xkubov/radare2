@@ -238,6 +238,16 @@ R_API int walkthrough_arm_jmptbl_style(RAnal *anal, RAnalFunction *fcn, int dept
 	return ret;
 }
 
+
+static bool predecessor_bb_cb(RAnalBlock *block, void *user) {
+	RAnalBlock **my_bb = user;
+	if (block->jump == (*my_bb)->addr || block->fail == (*my_bb)->addr) {
+		*my_bb = block;
+		return false;
+	}
+	return true;
+}
+
 R_API bool try_get_jmptbl_info(RAnal *anal, RAnalFunction *fcn, ut64 addr, RAnalBlock *my_bb, ut64 *table_size, ut64 *default_case) {
 	bool isValid = false;
 	int i;
