@@ -59,8 +59,8 @@ fi
 A=$(dirname "$PWD/$0")
 cd "$A" && cd .. || exit 1
 
+DEFAULT_PREFIX=/usr/local
 if [ "`uname`" = Darwin ]; then
-	DEFAULT_PREFIX=/usr/local
 	# purge previous installations on other common paths
 	if [ -f /usr/bin/r2 ]; then
 		type sudo || NOSUDO=1
@@ -72,7 +72,6 @@ if [ "`uname`" = Darwin ]; then
 		${SUDO} ${MAKE} uninstall > /dev/null
 	fi
 else
-	DEFAULT_PREFIX=/usr
 	[ -n "${PREFIX}" -a "${PREFIX}" != /usr ] && \
 		CFGARG="${CFGARG} --with-rpath"
 fi
@@ -82,7 +81,7 @@ fi
 for a in $* ; do
 	case "$a" in
 	-h|--help)
-		echo "Usage: sys/build.sh [/usr]"
+		echo "Usage: sys/build.sh [/usr/local]"
 		exit 0
 		;;
 	'')
