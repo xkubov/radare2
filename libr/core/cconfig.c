@@ -1216,6 +1216,9 @@ static bool cb_cmdpdc(void *user, void *data) {
 			if (!strcmp (cp->name, "r2ghidra")) {
 				r_cons_printf ("pdg\n");
 			}
+			if (!strcmp (cp->name, "r2retdec")) {
+				r_cons_printf ("pdz\n");
+			}
 		}
 		check_decompiler ("r2ghidra");
 		check_decompiler ("r2jadx");
